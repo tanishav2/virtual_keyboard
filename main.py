@@ -1,5 +1,6 @@
 import cv2
 import cvzone
+import time
 from cvzone.HandTrackingModule import HandDetector
 
 # Webcam setup
@@ -20,11 +21,27 @@ keys = [
     ["Space"]
 ]
 
+# Button class with press detection
 class Button():
     def __init__(self, pos, text, size=[70, 70]):
         self.pos = pos
         self.size = size
         self.text = text
+        self.lastPressed = 0
+        self.isActive = False  # for highlight
+
+    def isPressed(self, fingerPos, delay=0.5):
+        x, y = self.pos
+        w, h = self.size
+        fx, fy = fingerPos
+
+        if x < fx < x + w and y < fy < y + h:
+            currentTime = time.time()
+            if currentTime - self.lastPressed > delay:
+                self.lastPressed = currentTime
+                self.isActive = True
+        else:
+            self.isActive = False
 
 buttonList = []
 
@@ -34,17 +51,13 @@ row_spacing = 10
 col_spacing = 10
 keyboard_margin_bottom = 40
 
-# Calculate total keyboard height
 keyboard_height = len(keys) * (key_height + row_spacing)
-
-# Starting y to place keyboard from bottom
 start_y = 720 - keyboard_height - keyboard_margin_bottom
 
+# Create all buttons
 for i, row in enumerate(keys):
     row_width = 0
-    row_buttons = []
 
-    # Calculate row width first
     for key in row:
         width = 70
         if key in ["Tab", "Caps", "Enter", "Back"]:
@@ -52,13 +65,11 @@ for i, row in enumerate(keys):
         elif key == "Space":
             width = 500
         row_width += width + col_spacing
-    row_width -= col_spacing  # remove last spacing
+    row_width -= col_spacing
 
-    # Center x for this row
     start_x = (1280 - row_width) // 2
-
-    # Add buttons in the row
     x_offset = start_x
+
     for key in row:
         width = 70
         if key in ["Tab", "Caps", "Enter", "Back"]:
@@ -68,19 +79,20 @@ for i, row in enumerate(keys):
         buttonList.append(Button([x_offset, start_y + i * (key_height + row_spacing)], key, [width, key_height]))
         x_offset += width + col_spacing
 
+# Draw all keys
 def drawAll(img, buttonList):
     for button in buttonList:
         x, y = button.pos
         w, h = button.size
 
-        # Semi-transparent background
         overlay = img.copy()
         alpha = 0.3
-        cv2.rectangle(overlay, (x, y), (x + w, y + h), (255, 255, 255), -1)
+        color = (0, 255, 0) if button.isActive else (255, 255, 255)
+        cv2.rectangle(overlay, (x, y), (x + w, y + h), color, -1)
         cv2.addWeighted(overlay, alpha, img, 1 - alpha, 0, img)
 
-        # Rounded white border
-        cv2.rectangle(img, (x, y), (x + w, y + h), (255, 255, 255), 2, cv2.LINE_AA)
+        # Border
+        cv2.rectangle(img, (x, y), (x + w, y + h), color, 2, cv2.LINE_AA)
 
         # Centered text
         font = cv2.FONT_HERSHEY_SIMPLEX
@@ -90,12 +102,21 @@ def drawAll(img, buttonList):
         cv2.putText(img, button.text, (text_x, text_y), font, 0.8, (0, 0, 0), 2)
     return img
 
+# Main loop
 while True:
     success, img = cap.read()
     if not success:
         break
 
     hands, img = detector.findHands(img)
+
+    if hands:
+        lmList = hands[0]["lmList"]
+        if lmList:
+            index_finger_tip = lmList[8][:2]  # (x, y)
+            for button in buttonList:
+                button.isPressed(index_finger_tip)  # just sets active state if hovered long enough
+
     img = drawAll(img, buttonList)
 
     cv2.imshow("Image", img)
