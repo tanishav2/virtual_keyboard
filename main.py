@@ -40,8 +40,9 @@ class Button():
             if currentTime - self.lastPressed > delay:
                 self.lastPressed = currentTime
                 self.isActive = True
-        else:
-            self.isActive = False
+                return True
+        self.isActive = False
+        return False
 
 buttonList = []
 
@@ -102,6 +103,9 @@ def drawAll(img, buttonList):
         cv2.putText(img, button.text, (text_x, text_y), font, 0.8, (0, 0, 0), 2)
     return img
 
+# Store typed text
+typedText = ""
+
 # Main loop
 while True:
     success, img = cap.read()
@@ -110,14 +114,41 @@ while True:
 
     hands, img = detector.findHands(img)
 
+    # 👉 Draw hand position guide
+    cv2.rectangle(img, (400, 150), (880, 550), (200, 200, 200), 2)
+    cv2.putText(img, "Place hand inside box", (420, 140),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.8, (200, 200, 200), 2)
+
     if hands:
         lmList = hands[0]["lmList"]
         if lmList:
-            index_finger_tip = lmList[8][:2]  # (x, y)
-            for button in buttonList:
-                button.isPressed(index_finger_tip)  # just sets active state if hovered long enough
+            index_finger_tip = lmList[8][:2]
+            thumb_tip = lmList[4][:2]
+
+            # 👉 Draw a dot at the index fingertip
+            cv2.circle(img, index_finger_tip, 15, (255, 0, 255), cv2.FILLED)
+
+            # Calculate pinch distance
+            pinch_distance = ((index_finger_tip[0] - thumb_tip[0]) ** 2 + (index_finger_tip[1] - thumb_tip[1]) ** 2) ** 0.5
+
+            if pinch_distance < 40:  # Pinch gesture
+                for button in buttonList:
+                    if button.isPressed(index_finger_tip):
+                        if button.text == "Space":
+                            typedText += " "
+                        elif button.text not in ["Caps", "Tab", "Enter", "Back"]:
+                            typedText += button.text
+    else:
+        # 🧭 No hand detected message
+        cv2.putText(img, "Hand not detected", (50, 200),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 3)
 
     img = drawAll(img, buttonList)
+
+    # Display typed text
+    cv2.rectangle(img, (50, 50), (1200, 150), (255, 255, 255), -1)
+    cv2.rectangle(img, (50, 50), (1200, 150), (0, 0, 0), 2)
+    cv2.putText(img, typedText, (60, 120), cv2.FONT_HERSHEY_SIMPLEX, 2, (0, 0, 0), 3)
 
     cv2.imshow("Image", img)
     if cv2.waitKey(1) & 0xFF == 27:
@@ -125,3 +156,4 @@ while True:
 
 cap.release()
 cv2.destroyAllWindows()
+
